@@ -1,3 +1,5 @@
+using APIUser.Models;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 try
@@ -11,6 +13,9 @@ try
         .WriteTo.File("log/APIUser.txt", rollingInterval: RollingInterval.Day)//File by day
         .CreateLogger();
     builder.Host.UseSerilog();
+
+    builder.Services.AddDbContext<dbdataContext>(options =>
+        options.UseSqlServer(builder.Configuration.GetConnectionString("dbdata")));
 
     // Add services to the container.
 
