@@ -8,6 +8,9 @@ using Microsoft.EntityFrameworkCore;
 using APIUser.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
+using Microsoft.VisualBasic;
 
 namespace APIUser.Controllers
 {
@@ -30,6 +33,9 @@ namespace APIUser.Controllers
         public async Task<ActionResult<IEnumerable<User>>> GetUsers()
         {
             _logger.LogInformation("Call to api/Users");
+
+            var idUser = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
             return await _context.Users.ToListAsync();
         }
 
@@ -57,52 +63,110 @@ namespace APIUser.Controllers
                 return BadRequest();
             }
 
-            _context.Entry(user).State = EntityState.Modified;
-
             try
             {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!UserExists(id))
+                User userDb = await _context.Users.FindAsync(id);
+                if(userDb == null)
                 {
-                    return NotFound();
+                    return BadRequest("Validate data send");
                 }
-                else
-                {
-                    throw;
-                }
-            }
 
-            return NoContent();
+                //Move
+                userDb.name = user.name;
+                userDb.password = user.password;
+                userDb.address = user.address;
+                userDb.birthday = user.birthday;
+                userDb.updated = user.updated;
+                userDb.idUserUpdated = id;
+                userDb.enabled = user.enabled;
+
+                _context.Entry(user).State = EntityState.Modified;
+
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    if (!UserExists(id))
+                    {
+                        return NotFound();
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex.Message);
+                _logger.LogError(ex.StackTrace.ToString());
+
+                return NoContent();
+            }
+            
         }
 
         // POST: api/Users
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public async Task<ActionResult<User>> PostUser(User user)
         {
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+            try
+            {
+                //Move
+                user.registered = DateTime.Now;
+                user.updated = DateTime.Now;
 
-            return CreatedAtAction("GetUser", new { id = user.idUser }, user);
+
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+
+                return CreatedAtAction("GetUser", new { id = user.idUser }, user);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex.Message);
+                _logger.LogError(ex.StackTrace.ToString());
+
+                return NoContent();
+            }
+            
         }
 
         // DELETE: api/Users/5
         [HttpDelete("{id}")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> DeleteUser(int id)
         {
-            var user = await _context.Users.FindAsync(id);
-            if (user == null)
+            try
             {
-                return NotFound();
+                var user = await _context.Users.FindAsync(id);
+
+                if (!user.canEdited)
+                {
+                    return BadRequest("Cant change some main users");
+                }
+
+                if (user == null)
+                {
+                    return NotFound();
+                }
+
+                _context.Users.Remove(user);
+                await _context.SaveChangesAsync();
+
+                return NoContent();
             }
-
-            _context.Users.Remove(user);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
+            catch (Exception ex)
+            {
+                return NoContent();
+            }
+            
         }
 
         private bool UserExists(int id)
